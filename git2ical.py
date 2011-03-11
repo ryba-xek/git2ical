@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 #--- Author: Xek <s@averin.ru>
-__version__ = '1.0b'
+__version__ = '1.1b'
 
 import re
 from os.path import basename, exists, join
@@ -16,23 +16,30 @@ STAR = u'☆'
 STATSRE = re.compile(r'^(\d+) [^,]+, (\d+) [^,]+, (\d+) ')
 
 
-def md5(str):
-    return hashlib.md5(str).hexdigest()
+def md5(text):
+    if type(text) is unicode:
+        text = text.encode('utf8')
+
+    if type(text) is date:
+        text = str(text)
+
+    return hashlib.md5(text).hexdigest()
 
 
 #parse command line
 def parse_cmdline():
     parser_opts = {
         'usage': 'usage: %prog [options] repo_folder ics_outfile',
-        'description': 'Export daily commits count from git repo history \
-            as daily calendar events',
+        'description': 'Export daily commits count from git repo history' \
+            ' as daily calendar events',
         'version': __version__
     }
     parser = OptionParser(**parser_opts)
-    parser.add_option("-a", "--split-authors", action="store_true", \
-        dest="split_authors", default=False, help="split events by author")
-    parser.add_option("-d", "--days", type='int', dest="last_days", \
-        default=30, metavar='INT', help="output last INT days, 0=today, 1=today+yesterday, etc. (default 30)")
+    parser.add_option('-a', '--split-authors', action='store_true', \
+        dest='split_authors', default=False, help='split events by author')
+    parser.add_option('-d', '--days', type='int', dest='last_days', \
+        default=30, metavar='INT', help='output last INT days, 0=today,' \
+        '1=today+yesterday, etc. (default 30)')
     (options, args) = parser.parse_args()
     if len(args) != 2:
         parser.print_usage()
@@ -88,19 +95,20 @@ def load_commits(repo, last_days):
         '--shortstat',
         '--since=-%d day 00:00' % last_days
     ]
-    #print ' '.join(map(lambda c: c if not '=' in c else c[0:c.find('=')]+"='%s'"%c[c.find('=')+1:], git_params))
+    #print ' '.join(map(lambda c: c if not '=' in c \
+    # else c[0:c.find('=')]+"='%s'"%c[c.find('=')+1:], git_params))
     p = Popen(git_params, stdout=PIPE)
     last_added_commit = None
     #try:
     for l in p.stdout:
-        l = l.strip()
+        l = l.strip().decode('utf8')
+
         if not l:
             continue
 
         if '|' in l:  # info: e7ed4df|1295817644|User|initial
             (hash, ts, author, subject) = l.split('|', 3)
             ts = int(ts)
-            subject = subject.decode('utf8')
             last_added_commit = add_commit(hash, ts, author, subject)
         else:  # stats: 8 files changed, 205 insertions(+), 0 deletions(-)
             g = STATSRE.match(l)
@@ -140,25 +148,25 @@ def make_cal(daydata, split_authors, repo_name, repo_hash):
         for day in daydata:
             for author in daydata[day]:
                 commits = daydata[day][author]
-                summary = '%s: %d' % (author, len(commits))
+                summary = u'%s: %d' % (author, len(commits))
                 subjects = map(lambda c: u'— %s' % c.subject, commits)
                 desc = u'\r\n'.join(subjects)
                 uid = '%s_%s_%s@git2ical' % \
-                      (md5(author)[0:8], md5(str(day))[0:8], repo_hash[0:8])
+                      (md5(author)[0:8], md5(day)[0:8], repo_hash[0:8])
                 add_event(summary, day, desc, uid)
     else:
         for day in daydata:
-            summary = '%s: %d' % \
+            summary = u'%s: %d' % \
                       (repo_name, sum(map(len, daydata[day].itervalues())))
             subjects = []
             authors = daydata[day].keys()
             authors.sort()
             for author in authors:
-                subjects.extend(['', '%s:' % author])
+                subjects.extend(['', u'%s:' % author])
                 commits = daydata[day][author]
                 subjects.extend(map(lambda c: u'— %s' % c.subject, commits))
             desc = u'\r\n'.join(subjects)
-            uid = '%s_%s@git2ical' % (md5(str(day))[0:8], repo_hash[0:8])
+            uid = '%s_%s@git2ical' % (md5(day)[0:8], repo_hash[0:8])
             add_event(summary, day, desc, uid)
 
     return cal
